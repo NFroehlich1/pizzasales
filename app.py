@@ -293,6 +293,11 @@ if df is not None:
     
     # Key Insights Section - Automatically highlight interesting patterns
     with st.expander("🔍 Key Insights & Peak Performance", expanded=True):
+        
+        # Helper to clean up pizza names for display (removes "The" and "Pizza" to save space)
+        def clean_name(name):
+            return name.replace("The ", "").replace(" Pizza", "")
+
         col_insight1, col_insight2, col_insight3, col_insight4 = st.columns(4)
         
         # Peak Day-Pizza Combination
@@ -302,8 +307,8 @@ if df is not None:
         with col_insight1:
             st.metric(
                 "Peak Single-Day Sales",
-                f"{peak_combination['pizza_name']}",
-                f"{int(peak_combination['quantity'])} units on {peak_combination['day_of_week']}"
+                f"{clean_name(peak_combination['pizza_name'])}",
+                f"{int(peak_combination['quantity'])} units ({peak_combination['day_of_week'][:3]})"
             )
         
         # Peak Hour-Pizza Combination
@@ -313,8 +318,8 @@ if df is not None:
         with col_insight2:
             st.metric(
                 "Peak Hour for Single Pizza",
-                f"{peak_hour_pizza['pizza_name']}",
-                f"{int(peak_hour_pizza['quantity'])} units at {int(peak_hour_pizza['hour'])}:00"
+                f"{clean_name(peak_hour_pizza['pizza_name'])}",
+                f"{int(peak_hour_pizza['quantity'])} units @ {int(peak_hour_pizza['hour'])}:00"
             )
         
         # Best Overall Pizza
@@ -324,30 +329,37 @@ if df is not None:
         with col_insight3:
             st.metric(
                 "Best Seller Overall",
-                f"{best_pizza['pizza_name']}",
+                f"{clean_name(best_pizza['pizza_name'])}",
                 f"{int(best_pizza['quantity'])} total units"
             )
             
-        # Demand Fluctuation Insight (Coefficient of Variation) - Simple proxy for demand stability
-        # Which pizza has the most volatile demand?
+        # Demand Fluctuation Insight
         pizza_volatility = filtered_df.groupby(['pizza_name', 'order_date'])['quantity'].sum().reset_index()
-        # Calculate std dev and mean of daily sales per pizza
         volatility_stats = pizza_volatility.groupby('pizza_name')['quantity'].agg(['std', 'mean'])
         volatility_stats['cv'] = volatility_stats['std'] / volatility_stats['mean']
         
-        # Most stable pizza (lowest CV) - Good for consistent stock
         most_stable = volatility_stats.sort_values('cv').iloc[0]
         most_volatile = volatility_stats.sort_values('cv', ascending=False).iloc[0]
         
         with col_insight4:
              st.metric(
                 "Most Stable Demand",
-                f"{most_stable.name}",
-                f"Daily Var: ±{int(most_stable['std'])} units",
-                help="This pizza has the most consistent daily sales, making it easiest to forecast."
+                f"{clean_name(most_stable.name)}",
+                f"±{int(most_stable['std'])} daily var",
+                help="This pizza has the lowest daily variance relative to its sales, making it the safest bet for consistent inventory."
             )
 
-    st.info(f"💡 **Forecasting Tip:** The **{most_volatile.name}** shows the most volatile demand. Consider keeping a higher safety stock buffer for this item compared to the **{most_stable.name}**, which sells very consistently.")
+        # Enhanced Strategic Recommendation
+        st.markdown(f"""
+        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; color: #31333F;">
+            <h5 style="margin: 0; color: #31333F;">🧠 Intelligent Forecasting Recommendation</h5>
+            <p style="margin: 5px 0 0 0;">
+                While <b>{clean_name(most_stable.name)}</b> is your "Safe Harbor" with consistent sales, 
+                <b>{clean_name(most_volatile.name)}</b> represents your biggest inventory risk due to high volatility.
+                <br>👉 <i>Recommendation: Increase safety stock buffer by 15-20% for {clean_name(most_volatile.name)} to prevent stockouts during demand spikes.</i>
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
     
     tab1, tab2, tab3 = st.tabs(["Weekly Demand", "Hourly Demand", "Monthly Trends"])
     
