@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import numpy as np
 
 # Page Configuration
 st.set_page_config(page_title="Pizza Sales Dashboard", page_icon="🍕", layout="wide")
@@ -291,93 +292,310 @@ if df is not None:
     st.subheader("Deep Dive: Demand by Pizza Type")
     st.markdown("Analyze which pizza types are most popular across different timeframes.")
     
-    # Key Insights Section - Automatically highlight interesting patterns
-    with st.expander("🔍 Key Insights & Peak Performance", expanded=True):
+    # Professional Forecasting & Demand Insights Section
+    st.markdown("---")
+    st.subheader("Demand Forecasting & Strategic Insights")
+    
+    # Helper function to clean pizza names
+    def clean_name(name):
+        return name.replace("The ", "").replace(" Pizza", "")
+    
+    # Calculate comprehensive demand statistics
+    pizza_volatility = filtered_df.groupby(['pizza_name', 'order_date'])['quantity'].sum().reset_index()
+    volatility_stats = pizza_volatility.groupby('pizza_name')['quantity'].agg(['std', 'mean', 'min', 'max']).reset_index()
+    volatility_stats['cv'] = volatility_stats['std'] / volatility_stats['mean']  # Coefficient of Variation
+    volatility_stats['volatility_risk'] = volatility_stats['cv'].apply(lambda x: 'High' if x > 0.5 else 'Medium' if x > 0.3 else 'Low')
+    
+    # Weekly pattern analysis
+    daily_pizza_qty = filtered_df.groupby(['day_of_week', 'pizza_name'])['quantity'].sum().reset_index()
+    weekend_days = ['Saturday', 'Sunday']
+    weekday_sales = daily_pizza_qty[~daily_pizza_qty['day_of_week'].isin(weekend_days)].groupby('pizza_name')['quantity'].mean()
+    weekend_sales = daily_pizza_qty[daily_pizza_qty['day_of_week'].isin(weekend_days)].groupby('pizza_name')['quantity'].mean()
+    weekend_lift = ((weekend_sales - weekday_sales) / weekday_sales * 100).fillna(0)
+    
+    # Hourly pattern analysis
+    hourly_pizza_qty = filtered_df.groupby(['hour', 'pizza_name'])['quantity'].sum().reset_index()
+    
+    # Monthly trend analysis (growing/declining)
+    monthly_pizza_trend = filtered_df.groupby(['pizza_name', 'month'])['quantity'].sum().reset_index()
+    monthly_pizza_trend['month_num'] = pd.to_datetime(monthly_pizza_trend['month'], format='%B', errors='coerce').dt.month
+    monthly_pizza_trend = monthly_pizza_trend.dropna(subset=['month_num'])
+    
+    def calculate_trend(group):
+        if len(group) > 1:
+            return np.polyfit(group['month_num'], group['quantity'], 1)[0]
+        return 0
+    
+    trend_slope = monthly_pizza_trend.groupby('pizza_name').apply(calculate_trend).reset_index()
+    trend_slope.columns = ['pizza_name', 'slope']
+    
+    # Key Metrics Dashboard
+    col_kpi1, col_kpi2, col_kpi3, col_kpi4 = st.columns(4)
+    
+    peak_combination = daily_pizza_qty.loc[daily_pizza_qty['quantity'].idxmax()]
+    best_pizza = volatility_stats.loc[volatility_stats['mean'].idxmax()]
+    most_stable = volatility_stats.loc[volatility_stats['cv'].idxmin()]
+    most_volatile = volatility_stats.loc[volatility_stats['cv'].idxmax()]
+    
+    with col_kpi1:
+        st.metric(
+            "Peak Single-Day Performance",
+            f"{clean_name(peak_combination['pizza_name'])}",
+            f"{int(peak_combination['quantity'])} units on {peak_combination['day_of_week']}"
+        )
+    
+    with col_kpi2:
+        st.metric(
+            "Highest Average Daily Sales",
+            f"{clean_name(best_pizza['pizza_name'])}",
+            f"{int(best_pizza['mean'])} units/day"
+        )
+    
+    with col_kpi3:
+        st.metric(
+            "Lowest Demand Volatility",
+            f"{clean_name(most_stable['pizza_name'])}",
+            f"CV: {most_stable['cv']:.2f}"
+        )
+    
+    with col_kpi4:
+        st.metric(
+            "Highest Demand Volatility",
+            f"{clean_name(most_volatile['pizza_name'])}",
+            f"CV: {most_volatile['cv']:.2f}"
+        )
+    
+    # Detailed Analysis Sections
+    tab_forecast1, tab_forecast2, tab_forecast3 = st.tabs([
+        "Demand Stability Analysis", 
+        "Seasonal & Temporal Patterns", 
+        "Strategic Recommendations"
+    ])
+    
+    with tab_forecast1:
+        st.markdown("### Demand Volatility Assessment")
+        st.markdown("Understanding demand consistency is critical for inventory optimization and forecasting accuracy.")
         
-        # Helper to clean up pizza names for display (removes "The" and "Pizza" to save space)
-        def clean_name(name):
-            return name.replace("The ", "").replace(" Pizza", "")
-
-        col_insight1, col_insight2, col_insight3, col_insight4 = st.columns(4)
+        # Create volatility classification table
+        volatility_display = volatility_stats[['pizza_name', 'mean', 'std', 'cv', 'volatility_risk', 'min', 'max']].copy()
+        volatility_display.columns = ['Pizza', 'Avg Daily Sales', 'Std Deviation', 'Coefficient of Variation', 'Risk Level', 'Min Daily', 'Max Daily']
+        volatility_display = volatility_display.sort_values('Coefficient of Variation')
+        volatility_display['Pizza'] = volatility_display['Pizza'].apply(clean_name)
+        volatility_display['Avg Daily Sales'] = volatility_display['Avg Daily Sales'].round(1)
+        volatility_display['Std Deviation'] = volatility_display['Std Deviation'].round(1)
+        volatility_display['Coefficient of Variation'] = volatility_display['Coefficient of Variation'].round(3)
         
-        # Peak Day-Pizza Combination
-        daily_pizza_qty = filtered_df.groupby(['day_of_week', 'pizza_name'])['quantity'].sum().reset_index()
-        peak_combination = daily_pizza_qty.loc[daily_pizza_qty['quantity'].idxmax()]
+        st.dataframe(volatility_display, use_container_width=True)
         
-        with col_insight1:
-            st.metric(
-                "Peak Single-Day Sales",
-                f"{clean_name(peak_combination['pizza_name'])}",
-                f"{int(peak_combination['quantity'])} units ({peak_combination['day_of_week'][:3]})"
-            )
+        st.markdown("""
+        **Interpretation Guide:**
+        - **Coefficient of Variation (CV)**: Lower values indicate more predictable demand patterns
+        - **CV < 0.3**: Low volatility - highly predictable, minimal safety stock needed
+        - **CV 0.3 - 0.5**: Medium volatility - standard safety stock recommended
+        - **CV > 0.5**: High volatility - significant safety stock buffer required
+        """)
+    
+    with tab_forecast2:
+        st.markdown("### Temporal Demand Patterns")
         
-        # Peak Hour-Pizza Combination
-        hourly_pizza_qty = filtered_df.groupby(['hour', 'pizza_name'])['quantity'].sum().reset_index()
-        peak_hour_pizza = hourly_pizza_qty.loc[hourly_pizza_qty['quantity'].idxmax()]
+        col_pattern1, col_pattern2 = st.columns(2)
         
-        with col_insight2:
-            st.metric(
-                "Peak Hour for Single Pizza",
-                f"{clean_name(peak_hour_pizza['pizza_name'])}",
-                f"{int(peak_hour_pizza['quantity'])} units @ {int(peak_hour_pizza['hour'])}:00"
-            )
-        
-        # Best Overall Pizza
-        total_pizza_qty = filtered_df.groupby('pizza_name')['quantity'].sum().reset_index()
-        best_pizza = total_pizza_qty.loc[total_pizza_qty['quantity'].idxmax()]
-        
-        with col_insight3:
-            st.metric(
-                "Best Seller Overall",
-                f"{clean_name(best_pizza['pizza_name'])}",
-                f"{int(best_pizza['quantity'])} total units"
-            )
+        with col_pattern1:
+            st.markdown("#### Weekend vs Weekday Performance")
+            weekend_analysis = pd.DataFrame({
+                'Pizza': weekday_sales.index,
+                'Weekday Avg': weekday_sales.values,
+                'Weekend Avg': [weekend_sales.get(idx, 0) for idx in weekday_sales.index],
+                'Weekend Lift %': [weekend_lift.get(idx, 0) for idx in weekday_sales.index]
+            })
+            weekend_analysis = weekend_analysis.sort_values('Weekend Lift %', ascending=False).head(10)
+            weekend_analysis['Pizza'] = weekend_analysis['Pizza'].apply(clean_name)
             
-        # Demand Fluctuation Insight
-        pizza_volatility = filtered_df.groupby(['pizza_name', 'order_date'])['quantity'].sum().reset_index()
-        volatility_stats = pizza_volatility.groupby('pizza_name')['quantity'].agg(['std', 'mean'])
-        volatility_stats['cv'] = volatility_stats['std'] / volatility_stats['mean']
+            st.dataframe(weekend_analysis, use_container_width=True)
         
-        most_stable = volatility_stats.sort_values('cv').iloc[0]
-        most_volatile = volatility_stats.sort_values('cv', ascending=False).iloc[0]
+        with col_pattern2:
+            st.markdown("#### Peak Demand Hours")
+            peak_hours_by_pizza = hourly_pizza_qty.groupby('pizza_name').apply(
+                lambda x: x.loc[x['quantity'].idxmax()]
+            ).reset_index(drop=True)
+            peak_hours_by_pizza = peak_hours_by_pizza[['pizza_name', 'hour', 'quantity']].sort_values('quantity', ascending=False).head(10)
+            peak_hours_by_pizza['pizza_name'] = peak_hours_by_pizza['pizza_name'].apply(clean_name)
+            peak_hours_by_pizza.columns = ['Pizza', 'Peak Hour', 'Quantity at Peak']
+            
+            st.dataframe(peak_hours_by_pizza, use_container_width=True)
         
-        with col_insight4:
-             st.metric(
-                "Most Stable Demand",
-                f"{clean_name(most_stable.name)}",
-                f"±{int(most_stable['std'])} daily var",
-                help="This pizza has the lowest daily variance relative to its sales, making it the safest bet for consistent inventory."
-            )
-
-        # Enhanced Strategic Recommendation
-        st.markdown(f"""
-        <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border-left: 5px solid #ff4b4b; color: #31333F;">
-            <h5 style="margin: 0; color: #31333F;">🧠 Intelligent Forecasting Recommendation</h5>
-            <p style="margin: 5px 0 0 0;">
-                While <b>{clean_name(most_stable.name)}</b> is your "Safe Harbor" with consistent sales, 
-                <b>{clean_name(most_volatile.name)}</b> represents your biggest inventory risk due to high volatility.
-                <br>👉 <i>Recommendation: Increase safety stock buffer by 15-20% for {clean_name(most_volatile.name)} to prevent stockouts during demand spikes.</i>
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown("#### Monthly Sales Trends")
+        trending_up = trend_slope[trend_slope['slope'] > 0].sort_values('slope', ascending=False).head(5)
+        trending_down = trend_slope[trend_slope['slope'] < 0].sort_values('slope').head(5)
+        
+        col_trend1, col_trend2 = st.columns(2)
+        
+        with col_trend1:
+            st.markdown("**Growing Demand (Positive Trend)**")
+            if len(trending_up) > 0:
+                trending_up_display = trending_up.copy()
+                trending_up_display['pizza_name'] = trending_up_display['pizza_name'].apply(clean_name)
+                trending_up_display.columns = ['Pizza', 'Monthly Growth Rate']
+                trending_up_display['Monthly Growth Rate'] = trending_up_display['Monthly Growth Rate'].round(2)
+                st.dataframe(trending_up_display, use_container_width=True)
+            else:
+                st.info("No clear positive trends identified in the selected period.")
+        
+        with col_trend2:
+            st.markdown("**Declining Demand (Negative Trend)**")
+            if len(trending_down) > 0:
+                trending_down_display = trending_down.copy()
+                trending_down_display['pizza_name'] = trending_down_display['pizza_name'].apply(clean_name)
+                trending_down_display.columns = ['Pizza', 'Monthly Decline Rate']
+                trending_down_display['Monthly Decline Rate'] = trending_down_display['Monthly Decline Rate'].round(2)
+                st.dataframe(trending_down_display, use_container_width=True)
+            else:
+                st.info("No clear negative trends identified in the selected period.")
+    
+    with tab_forecast3:
+        st.markdown("### Strategic Inventory & Forecasting Recommendations")
+        
+        # Calculate recommended safety stock levels
+        volatility_stats['recommended_buffer'] = volatility_stats.apply(
+            lambda row: row['mean'] * 0.10 if row['cv'] < 0.3 
+            else row['mean'] * 0.20 if row['cv'] < 0.5 
+            else row['mean'] * 0.35, axis=1
+        )
+        
+        volatility_stats['recommended_daily_stock'] = volatility_stats['mean'] + volatility_stats['recommended_buffer']
+        
+        recommendations = volatility_stats[['pizza_name', 'mean', 'cv', 'volatility_risk', 'recommended_daily_stock']].copy()
+        recommendations.columns = ['Pizza', 'Average Daily Sales', 'Volatility (CV)', 'Risk Level', 'Recommended Daily Stock']
+        recommendations = recommendations.sort_values('Risk Level', ascending=True)
+        recommendations['Pizza'] = recommendations['Pizza'].apply(clean_name)
+        recommendations['Average Daily Sales'] = recommendations['Average Daily Sales'].round(1)
+        recommendations['Recommended Daily Stock'] = recommendations['Recommended Daily Stock'].round(0).astype(int)
+        recommendations['Volatility (CV)'] = recommendations['Volatility (CV)'].round(3)
+        
+        st.dataframe(recommendations, use_container_width=True)
+        
+        st.markdown("---")
+        
+        # Strategic Insights - Written directly from data analysis
+        st.markdown("#### Strategic Insights & Recommendations")
+        
+        # Get actual values from recommendations table for insights
+        high_risk_items = recommendations[recommendations['Risk Level'] == 'High'].head(3)
+        low_risk_items = recommendations[recommendations['Risk Level'] == 'Low'].head(3)
+        
+        # High-risk insights
+        if len(high_risk_items) > 0:
+            st.markdown("**HIGH PRIORITY: Demand Volatility Management**")
+            for idx, row in high_risk_items.iterrows():
+                avg_sales = row['Average Daily Sales']
+                cv = row['Volatility (CV)']
+                recommended_stock = row['Recommended Daily Stock']
+                buffer = recommended_stock - avg_sales
+                buffer_pct = (buffer / avg_sales * 100) if avg_sales > 0 else 0
+                
+                st.markdown(f"""
+                - **{row['Pizza']}**: Exhibits significant demand uncertainty with a coefficient of variation of {cv:.3f}. 
+                  Average daily sales of {avg_sales:.1f} units fluctuate substantially, requiring a safety stock buffer 
+                  of approximately {buffer:.0f} units ({buffer_pct:.0f}% above average daily sales). 
+                  Implement dynamic inventory management with day-of-week adjustments and monitor closely for demand spikes.
+                """)
+        
+        # Weekend optimization insights
+        if len(weekend_lift) > 0:
+            top_weekend_pizzas = weekend_lift.nlargest(3)
+            st.markdown("**WEEKEND DEMAND OPTIMIZATION**")
+            for pizza_name in top_weekend_pizzas.index:
+                lift = top_weekend_pizzas[pizza_name]
+                weekday_avg = weekday_sales.get(pizza_name, 0)
+                weekend_avg = weekend_sales.get(pizza_name, 0)
+                if weekday_avg > 0:
+                    prep_increase = max(lift / 2, 10)  # Minimum 10% increase
+                    st.markdown(f"""
+                    - **{clean_name(pizza_name)}**: Demonstrates {lift:.1f}% higher demand on weekends 
+                      ({weekend_avg:.1f} units vs. {weekday_avg:.1f} units on weekdays). 
+                      Recommendation: Increase weekend preparation volume by approximately {prep_increase:.0f}% 
+                      to capture additional revenue opportunities and reduce stockout risk during peak periods.
+                    """)
+        
+        # Peak hour insights
+        if len(hourly_pizza_qty) > 0:
+            peak_hour_data = hourly_pizza_qty.loc[hourly_pizza_qty.groupby('pizza_name')['quantity'].idxmax()]
+            top_peak_hours = peak_hour_data.nlargest(3, 'quantity')
+            st.markdown("**PEAK HOUR DEMAND PATTERNS**")
+            for idx, row in top_peak_hours.iterrows():
+                st.markdown(f"""
+                - **{clean_name(row['pizza_name'])}**: Reaches peak demand at {int(row['hour']):02d}:00 with {int(row['quantity'])} units sold. 
+                  Initiate preparation activities approximately one hour prior ({int(row['hour']-1):02d}:00) 
+                  to ensure product availability during this critical sales window.
+                """)
+        
+        # Stable demand insights
+        if len(low_risk_items) > 0:
+            st.markdown("**INVENTORY OPTIMIZATION OPPORTUNITIES**")
+            for idx, row in low_risk_items.iterrows():
+                cv = row['Volatility (CV)']
+                avg_sales = row['Average Daily Sales']
+                st.markdown(f"""
+                - **{row['Pizza']}**: Shows highly predictable demand patterns with a coefficient of variation of {cv:.3f} 
+                  and consistent daily sales averaging {avg_sales:.1f} units. This predictability enables 
+                  reduction in safety stock levels, lowering carrying costs while maintaining service levels. 
+                  Consider implementing just-in-time inventory practices for this product.
+                """)
+        
+        # Growth trend insights
+        if len(trending_up) > 0:
+            top_growing = trending_up.head(3)
+            st.markdown("**EMERGING GROWTH OPPORTUNITIES**")
+            for idx, row in top_growing.iterrows():
+                growth_rate = row['slope']
+                st.markdown(f"""
+                - **{clean_name(row['pizza_name'])}**: Exhibits a positive sales trend with a monthly growth rate 
+                  of {growth_rate:.2f} units. Consider increasing baseline inventory levels and promotional support 
+                  to capitalize on this upward trajectory. Monitor closely to confirm sustained demand growth.
+                """)
+        
+        # Declining trend insights
+        if len(trending_down) > 0:
+            top_declining = trending_down.head(3)
+            st.markdown("**ATTENTION REQUIRED: DECLINING TRENDS**")
+            for idx, row in top_declining.iterrows():
+                decline_rate = abs(row['slope'])
+                st.markdown(f"""
+                - **{clean_name(row['pizza_name'])}**: Shows declining sales trend with a monthly decrease rate 
+                  of {decline_rate:.2f} units. Investigate root causes such as changing customer preferences, 
+                  competitive pressures, or pricing sensitivity. Consider promotional strategies, recipe optimization, 
+                  or gradual inventory reduction to minimize waste.
+                """)
+        
+        st.markdown("---")
+        
+        st.markdown("""
+        **ANALYTICAL METHODOLOGY:**
+        - **Coefficient of Variation (CV)**: Calculated as standard deviation divided by mean daily sales. Lower values indicate more predictable demand.
+        - **Safety Stock Recommendations**: Based on CV thresholds - Low risk (CV < 0.3): 10% buffer, Medium risk (CV 0.3-0.5): 20% buffer, High risk (CV > 0.5): 35% buffer.
+        - **Weekend Lift Analysis**: Calculated as percentage difference between weekend and weekday average sales volumes.
+        - **Trend Analysis**: Linear regression applied to monthly sales data to identify growth or decline patterns.
+        - **Recommendations**: Assume standard supplier lead times and should be adjusted based on actual operational constraints and supplier reliability.
+        """)
     
     tab1, tab2, tab3 = st.tabs(["Weekly Demand", "Hourly Demand", "Monthly Trends"])
     
     with tab1:
         st.subheader("Pizza Popularity by Day of Week")
-        # Top 15 selling pizzas for cleaner visualization (increased from 10)
-        top_n_names = filtered_df.groupby('pizza_name')['quantity'].sum().sort_values(ascending=False).head(15).index.tolist()
-        weekly_demand = filtered_df[filtered_df['pizza_name'].isin(top_n_names)].groupby(['day_of_week', 'pizza_name'])['quantity'].sum().reset_index()
+        # Analyze ALL pizzas, not just top N
+        weekly_demand = filtered_df.groupby(['day_of_week', 'pizza_name'])['quantity'].sum().reset_index()
         
         # Ensure correct day order
         days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         
+        # Use a taller height for the heatmap to accommodate all pizzas readable
         fig_weekly_demand = px.imshow(
             weekly_demand.pivot(index='pizza_name', columns='day_of_week', values='quantity').reindex(columns=days_order),
             labels=dict(x="Day of Week", y="Pizza Type", color="Quantity"),
-            title="Heatmap: Top 15 Pizzas Sold by Day",
+            title="Heatmap: All Pizzas Sold by Day",
             color_continuous_scale='Greens',
-            aspect="auto"
+            aspect="auto",
+            height=800 # Make chart taller to fit all labels
         )
         st.plotly_chart(fig_weekly_demand, use_container_width=True)
 
@@ -385,7 +603,8 @@ if df is not None:
         st.subheader("Pizza Popularity by Hour of Day")
         st.markdown("Identify when specific pizzas are in high demand to optimize preparation.")
         
-        hourly_demand = filtered_df[filtered_df['pizza_name'].isin(top_n_names)].groupby(['hour', 'pizza_name'])['quantity'].sum().reset_index()
+        # Analyze ALL pizzas here too
+        hourly_demand = filtered_df.groupby(['hour', 'pizza_name'])['quantity'].sum().reset_index()
         
         # Create a complete grid to handle missing hours/pizzas
         hourly_pivot = hourly_demand.pivot(index='pizza_name', columns='hour', values='quantity').fillna(0)
@@ -393,9 +612,10 @@ if df is not None:
         fig_hourly_demand = px.imshow(
             hourly_pivot,
             labels=dict(x="Hour of Day", y="Pizza Type", color="Quantity"),
-            title="Heatmap: Top 15 Pizzas Sold by Hour",
+            title="Heatmap: All Pizzas Sold by Hour",
             color_continuous_scale='Magma_r', # Reversed Magma for clear visibility of hot spots
-            aspect="auto"
+            aspect="auto",
+            height=800 # Make chart taller
         )
         fig_hourly_demand.update_xaxes(dtick=1)
         st.plotly_chart(fig_hourly_demand, use_container_width=True)
