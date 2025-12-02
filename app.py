@@ -287,9 +287,15 @@ if df is not None:
         )
         st.plotly_chart(fig_stack, use_container_width=True)
 
-    # Raw Data & Export (Styled clearer)
+    # Raw Data & Export
+    # Note: Using st.dataframe directly with style.format can cause issues in some Streamlit versions on Cloud
+    # It's safer to format a copy for display or just show the raw dataframe
     with st.expander("📂 Access Raw Data & Export"):
-        st.dataframe(filtered_df.style.format({"total_price": "${:.2f}", "unit_price": "${:.2f}"}))
+        # Create a display copy to avoid affecting the original dataframe logic if needed later
+        display_df = filtered_df.copy()
+        # We format columns here just by rounding/string conversion if needed, or rely on st.dataframe's native handling
+        # Streamlit's dataframe handles numbers well, but let's just show the raw data without complex styling to avoid the Styler error
+        st.dataframe(display_df)
 
 else:
     st.warning("Please make sure 'pizza_sales.csv' is in the same directory.")
