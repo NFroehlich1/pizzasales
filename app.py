@@ -291,6 +291,64 @@ if df is not None:
     st.subheader("Deep Dive: Demand by Pizza Type")
     st.markdown("Analyze which pizza types are most popular across different timeframes.")
     
+    # Key Insights Section - Automatically highlight interesting patterns
+    with st.expander("🔍 Key Insights & Peak Performance", expanded=True):
+        col_insight1, col_insight2, col_insight3, col_insight4 = st.columns(4)
+        
+        # Peak Day-Pizza Combination
+        daily_pizza_qty = filtered_df.groupby(['day_of_week', 'pizza_name'])['quantity'].sum().reset_index()
+        peak_combination = daily_pizza_qty.loc[daily_pizza_qty['quantity'].idxmax()]
+        
+        with col_insight1:
+            st.metric(
+                "Peak Single-Day Sales",
+                f"{peak_combination['pizza_name']}",
+                f"{int(peak_combination['quantity'])} units on {peak_combination['day_of_week']}"
+            )
+        
+        # Peak Hour-Pizza Combination
+        hourly_pizza_qty = filtered_df.groupby(['hour', 'pizza_name'])['quantity'].sum().reset_index()
+        peak_hour_pizza = hourly_pizza_qty.loc[hourly_pizza_qty['quantity'].idxmax()]
+        
+        with col_insight2:
+            st.metric(
+                "Peak Hour for Single Pizza",
+                f"{peak_hour_pizza['pizza_name']}",
+                f"{int(peak_hour_pizza['quantity'])} units at {int(peak_hour_pizza['hour'])}:00"
+            )
+        
+        # Best Overall Pizza
+        total_pizza_qty = filtered_df.groupby('pizza_name')['quantity'].sum().reset_index()
+        best_pizza = total_pizza_qty.loc[total_pizza_qty['quantity'].idxmax()]
+        
+        with col_insight3:
+            st.metric(
+                "Best Seller Overall",
+                f"{best_pizza['pizza_name']}",
+                f"{int(best_pizza['quantity'])} total units"
+            )
+            
+        # Demand Fluctuation Insight (Coefficient of Variation) - Simple proxy for demand stability
+        # Which pizza has the most volatile demand?
+        pizza_volatility = filtered_df.groupby(['pizza_name', 'order_date'])['quantity'].sum().reset_index()
+        # Calculate std dev and mean of daily sales per pizza
+        volatility_stats = pizza_volatility.groupby('pizza_name')['quantity'].agg(['std', 'mean'])
+        volatility_stats['cv'] = volatility_stats['std'] / volatility_stats['mean']
+        
+        # Most stable pizza (lowest CV) - Good for consistent stock
+        most_stable = volatility_stats.sort_values('cv').iloc[0]
+        most_volatile = volatility_stats.sort_values('cv', ascending=False).iloc[0]
+        
+        with col_insight4:
+             st.metric(
+                "Most Stable Demand",
+                f"{most_stable.name}",
+                f"Daily Var: ±{int(most_stable['std'])} units",
+                help="This pizza has the most consistent daily sales, making it easiest to forecast."
+            )
+
+    st.info(f"💡 **Forecasting Tip:** The **{most_volatile.name}** shows the most volatile demand. Consider keeping a higher safety stock buffer for this item compared to the **{most_stable.name}**, which sells very consistently.")
+    
     tab1, tab2, tab3 = st.tabs(["Weekly Demand", "Hourly Demand", "Monthly Trends"])
     
     with tab1:
