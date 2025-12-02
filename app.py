@@ -334,10 +334,15 @@ if df is not None:
 
     with tab3:
         st.subheader("Sales Trends by Category Over the Year")
-        monthly_cat_trend = filtered_df.groupby(['month', 'pizza_category'])['quantity'].sum().reset_index()
         
-        # Ensure correct month order
-        months_order = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+        # 1. Ensure we have month numbers for sorting
+        filtered_df['month_num'] = filtered_df['order_date'].dt.month
+        
+        # 2. Group by month_num (for sorting), month name (for display), and category
+        monthly_cat_trend = filtered_df.groupby(['month_num', 'month', 'pizza_category'])['quantity'].sum().reset_index()
+        
+        # 3. CRITICAL: Sort by month_num to ensure Plotly connects Jan -> Feb -> Mar
+        monthly_cat_trend = monthly_cat_trend.sort_values('month_num')
         
         fig_monthly_trend = px.line(
             monthly_cat_trend,
@@ -345,9 +350,14 @@ if df is not None:
             y='quantity',
             color='pizza_category',
             title='Monthly Quantity Sold by Category',
-            markers=True,
-            category_orders={"month": months_order}
+            markers=True
         )
+        
+        # 4. Force x-axis order so the graph doesn't default to alphabetical (April, August...)
+        months_order = ['January', 'February', 'March', 'April', 'May', 'June', 
+                       'July', 'August', 'September', 'October', 'November', 'December']
+        fig_monthly_trend.update_xaxes(categoryorder='array', categoryarray=months_order)
+        
         st.plotly_chart(fig_monthly_trend, use_container_width=True)
 
     # Raw Data & Export
