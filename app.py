@@ -291,27 +291,48 @@ if df is not None:
     st.subheader("Deep Dive: Demand by Pizza Type")
     st.markdown("Analyze which pizza types are most popular across different timeframes.")
     
-    tab1, tab2 = st.tabs(["Weekly Demand Patterns", "Monthly Demand Trends"])
+    tab1, tab2, tab3 = st.tabs(["Weekly Demand", "Hourly Demand", "Monthly Trends"])
     
     with tab1:
         st.subheader("Pizza Popularity by Day of Week")
-        # Top 10 selling pizzas for cleaner visualization
-        top_10_names = filtered_df.groupby('pizza_name')['quantity'].sum().sort_values(ascending=False).head(10).index.tolist()
-        weekly_demand = filtered_df[filtered_df['pizza_name'].isin(top_10_names)].groupby(['day_of_week', 'pizza_name'])['quantity'].sum().reset_index()
+        # Top 15 selling pizzas for cleaner visualization (increased from 10)
+        top_n_names = filtered_df.groupby('pizza_name')['quantity'].sum().sort_values(ascending=False).head(15).index.tolist()
+        weekly_demand = filtered_df[filtered_df['pizza_name'].isin(top_n_names)].groupby(['day_of_week', 'pizza_name'])['quantity'].sum().reset_index()
         
         # Ensure correct day order
         days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
         
         fig_weekly_demand = px.imshow(
             weekly_demand.pivot(index='pizza_name', columns='day_of_week', values='quantity').reindex(columns=days_order),
-            labels=dict(x="Day of Week", y="Pizza Type", color="Quantity Sold"),
-            title="Heatmap: Top 10 Pizzas Sold by Day",
+            labels=dict(x="Day of Week", y="Pizza Type", color="Quantity"),
+            title="Heatmap: Top 15 Pizzas Sold by Day",
             color_continuous_scale='Greens',
             aspect="auto"
         )
         st.plotly_chart(fig_weekly_demand, use_container_width=True)
 
     with tab2:
+        st.subheader("Pizza Popularity by Hour of Day")
+        st.markdown("Identify when specific pizzas are in high demand to optimize preparation.")
+        
+        hourly_demand = filtered_df[filtered_df['pizza_name'].isin(top_n_names)].groupby(['hour', 'pizza_name'])['quantity'].sum().reset_index()
+        
+        # Create a complete grid to handle missing hours/pizzas
+        hourly_pivot = hourly_demand.pivot(index='pizza_name', columns='hour', values='quantity').fillna(0)
+        
+        fig_hourly_demand = px.imshow(
+            hourly_pivot,
+            labels=dict(x="Hour of Day", y="Pizza Type", color="Quantity"),
+            title="Heatmap: Top 15 Pizzas Sold by Hour",
+            color_continuous_scale='Magma_r', # Reversed Magma for clear visibility of hot spots
+            aspect="auto"
+        )
+        fig_hourly_demand.update_xaxes(dtick=1)
+        st.plotly_chart(fig_hourly_demand, use_container_width=True)
+        
+        st.info("Tip: Use this chart to schedule prep work. For example, if 'Thai Chicken Pizza' peaks at 18:00, start prep at 17:00.")
+
+    with tab3:
         st.subheader("Sales Trends by Category Over the Year")
         monthly_cat_trend = filtered_df.groupby(['month', 'pizza_category'])['quantity'].sum().reset_index()
         
