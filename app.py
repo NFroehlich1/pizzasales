@@ -287,6 +287,48 @@ if df is not None:
         )
         st.plotly_chart(fig_stack, use_container_width=True)
 
+    # Charts Section 6: Detailed Demand Analysis
+    st.subheader("Deep Dive: Demand by Pizza Type")
+    st.markdown("Analyze which pizza types are most popular across different timeframes.")
+    
+    tab1, tab2 = st.tabs(["Weekly Demand Patterns", "Monthly Demand Trends"])
+    
+    with tab1:
+        st.subheader("Pizza Popularity by Day of Week")
+        # Top 10 selling pizzas for cleaner visualization
+        top_10_names = filtered_df.groupby('pizza_name')['quantity'].sum().sort_values(ascending=False).head(10).index.tolist()
+        weekly_demand = filtered_df[filtered_df['pizza_name'].isin(top_10_names)].groupby(['day_of_week', 'pizza_name'])['quantity'].sum().reset_index()
+        
+        # Ensure correct day order
+        days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        
+        fig_weekly_demand = px.imshow(
+            weekly_demand.pivot(index='pizza_name', columns='day_of_week', values='quantity').reindex(columns=days_order),
+            labels=dict(x="Day of Week", y="Pizza Type", color="Quantity Sold"),
+            title="Heatmap: Top 10 Pizzas Sold by Day",
+            color_continuous_scale='Greens',
+            aspect="auto"
+        )
+        st.plotly_chart(fig_weekly_demand, use_container_width=True)
+
+    with tab2:
+        st.subheader("Sales Trends by Category Over the Year")
+        monthly_cat_trend = filtered_df.groupby(['month', 'pizza_category'])['quantity'].sum().reset_index()
+        
+        # Ensure correct month order
+        months_order = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+        
+        fig_monthly_trend = px.line(
+            monthly_cat_trend,
+            x='month',
+            y='quantity',
+            color='pizza_category',
+            title='Monthly Quantity Sold by Category',
+            markers=True,
+            category_orders={"month": months_order}
+        )
+        st.plotly_chart(fig_monthly_trend, use_container_width=True)
+
     # Raw Data & Export
     # Note: Using st.dataframe directly with style.format can cause issues in some Streamlit versions on Cloud
     # It's safer to format a copy for display or just show the raw dataframe
