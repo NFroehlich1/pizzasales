@@ -481,7 +481,15 @@ if df is not None:
         monthly_sales_matrix.index = monthly_sales_matrix.index.map(clean_name)
         
         # Display with heat-map like styling (using background_gradient if possible, or just dataframe)
-        st.dataframe(monthly_sales_matrix.style.format("{:.0f}").background_gradient(cmap="Greens", axis=1), use_container_width=True)
+        # Note: background_gradient requires matplotlib. If it fails, we fall back to standard dataframe.
+        try:
+            st.dataframe(monthly_sales_matrix.style.format("{:.0f}").background_gradient(cmap="Greens", axis=1), use_container_width=True)
+        except ImportError:
+             # Fallback if matplotlib is missing in environment
+             st.dataframe(monthly_sales_matrix.style.format("{:.0f}"), use_container_width=True)
+        except Exception as e:
+             # General fallback
+             st.dataframe(monthly_sales_matrix, use_container_width=True)
     
     with tab_forecast3:
         st.markdown("### Strategic Inventory & Forecasting Recommendations")
