@@ -301,10 +301,25 @@ if df is not None:
         return name.replace("The ", "").replace(" Pizza", "")
     
     # Calculate comprehensive demand statistics
-    pizza_volatility = filtered_df.groupby(['pizza_name', 'order_date'])['quantity'].sum().reset_index()
-    volatility_stats = pizza_volatility.groupby('pizza_name')['quantity'].agg(['std', 'mean', 'min', 'max']).reset_index()
+    # FIX: Ensure we include days with 0 sales in the calculation for accurate daily average and volatility
+    
+    # 1. Group by date and pizza to get daily sales where they occurred
+    daily_sales_raw = filtered_df.groupby(['order_date', 'pizza_name'])['quantity'].sum().reset_index()
+    
+    # 2. Create a full date range for the selected period
+    full_date_range = pd.date_range(start=daily_sales_raw['order_date'].min(), end=daily_sales_raw['order_date'].max())
+    
+    # 3. Pivot to create a matrix of Dates x Pizzas, filling missing days with 0
+    daily_sales_full = daily_sales_raw.pivot(index='order_date', columns='pizza_name', values='quantity').reindex(full_date_range).fillna(0)
+    
+    # 4. Calculate stats across the full timeline (now including 0s)
+    volatility_stats = daily_sales_full.agg(['mean', 'std', 'min', 'max']).T.reset_index()
+    
     volatility_stats['cv'] = volatility_stats['std'] / volatility_stats['mean']  # Coefficient of Variation
-    volatility_stats['volatility_risk'] = volatility_stats['cv'].apply(lambda x: 'High' if x > 0.5 else 'Medium' if x > 0.3 else 'Low')
+    # Handle division by zero or very low mean if necessary (though unlikely with this dataset)
+    volatility_stats['cv'] = volatility_stats['cv'].fillna(0)
+    
+    volatility_stats['volatility_risk'] = volatility_stats['cv'].apply(lambda x: 'High' if x > 0.8 else 'Medium' if x > 0.4 else 'Low') # Adjusted thresholds for full-calendar data (CV is usually higher when including 0s)
     
     # Weekly pattern analysis
     daily_pizza_qty = filtered_df.groupby(['day_of_week', 'pizza_name'])['quantity'].sum().reset_index()
@@ -451,6 +466,22 @@ if df is not None:
                 st.dataframe(trending_down_display, use_container_width=True)
             else:
                 st.info("No clear negative trends identified in the selected period.")
+                
+        # New: Total Sold per Pizza by Month Table
+        st.markdown("#### Total Quantity Sold by Pizza and Month")
+        # Pivot the monthly data to create a readable matrix
+        monthly_sales_matrix = monthly_pizza_trend.pivot(index='pizza_name', columns='month', values='quantity').fillna(0)
+        # Sort columns by month order
+        months_order = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+        # Filter to only include months present in the data
+        available_months = [m for m in months_order if m in monthly_sales_matrix.columns]
+        monthly_sales_matrix = monthly_sales_matrix[available_months]
+        
+        # Clean index names
+        monthly_sales_matrix.index = monthly_sales_matrix.index.map(clean_name)
+        
+        # Display with heat-map like styling (using background_gradient if possible, or just dataframe)
+        st.dataframe(monthly_sales_matrix.style.format("{:.0f}").background_gradient(cmap="Greens", axis=1), use_container_width=True)
     
     with tab_forecast3:
         st.markdown("### Strategic Inventory & Forecasting Recommendations")
