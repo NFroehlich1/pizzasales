@@ -3,3 +3,6 @@ pandas
 plotly
 numpy
 matplotlib
+qdrant-client
+sentence-transformers
+huggingface-hub
